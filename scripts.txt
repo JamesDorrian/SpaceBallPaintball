@@ -1,0 +1,472 @@
+=== James Dorrian ===
+===   13369451    ===
+===  Assignment2  ===
+===    Scripts    ===
+
+
+=== FILE1: Debris.js ===
+//SETS DEBRIS IN MOTION
+function Start () {
+	GetComponent.<Rigidbody>().AddForce(transform.forward * 150f);
+}
+
+function Update () {
+	
+}
+
+=== FILE2: EndGame.js
+//CONTROLS THE END OF GAME SCREEN DISPLAY
+static var gameEnded:boolean = false;
+static var gameSuccess:boolean= false;
+static var forceQuit:boolean= false;
+
+
+function Update(){
+	if(gameEnded){
+ 	GetComponent.<CanvasRenderer>().SetAlpha(1f);
+		if(gameSuccess){
+			EndGameTextManager.message = "Well Done. You Won!";
+			if(forceQuit){
+				EndGameTextManager.message = "Game Over";
+			}
+		} else {
+			EndGameTextManager.message = "You Lost... How Unfortunate.";
+			PaintBallManager.hit = true;
+			if(forceQuit){
+				EndGameTextManager.message = "Game Over";
+			}
+		}
+	} else {
+//		gameObject.SetActive (false);
+		GetComponent.<CanvasRenderer>().SetAlpha(0f);
+	}
+}
+
+=== FILE3: EnemyBehaviour.js ===
+//CONTROLS THE ENEMIES BEHAVIOUR
+var target : Transform; 	 		//the player
+var moveSpeed = 10;			 		//movement speed
+var missTarget: Transform;			//a location near the player (y+6,x+6) that will most likely miss
+var EnemyHealth : int = 10;	 		//enemy health
+var rotationSpeed = 10; 		 	//speed of rotation
+var myTransform : Transform; 		//enemy transform
+var Bullet: Rigidbody;				//bullet rigidbody
+var BarrelLocation: Transform;		//tip of gun (origin of bullet)
+var velocity: float = 200;			//speed of movement (acceleration)
+var shotDelay: float = 10;			//shot interval
+var lastShot: float;				//timestamp of most recent shot
+var healthSlider: Slider;			//slider for health
+var gameWin: AudioSource;
+
+function Start () {
+	//create a location which the AI will shoot at which is 9 pix above player collision capsule
+	missTarget = GameObject.FindWithTag("missTarget").transform;
+}
+
+function Update () {
+	var speed:int = GetComponent.<Rigidbody>().velocity.magnitude * 3.6;
+	EnemyManager.speed = speed;
+	//check health of enemy
+ 	if (EnemyHealth <= 0) {
+ 		if(AudioSet.soundOn){
+ 			gameWin.Play();
+ 		}
+ 		EndGameManager.gameEnded = true;
+ 		EndGameManager.gameSuccess = true;
+		Destroy(gameObject);
+	}
+	//look at player, this is outside shoot and move because they will always want to keep the player in sight regardless
+	//as to whether they are shooting or moving
+	 AimAtPlayer();
+	//check Distance
+	if(CheckDistance()){
+		//is in range
+		if((Time.time - lastShot) > shotDelay){
+			ShootPlayer();
+		}
+	} else {
+		//enemy out of range, reposition and move
+		MoveTowardPlayer();
+	}
+}
+
+function AimAtPlayer(){
+	var direction = target.position - myTransform.position;
+	var rotation = Quaternion.LookRotation(direction);
+    transform.rotation = Quaternion.Slerp(transform.rotation, rotation , Time.deltaTime * Difficulty.rotSpeed);
+}
+
+function ShootPlayer(){
+	var shotSound = GetComponent.<AudioSource>();
+	if(AudioSet.soundOn){
+		shotSound.Play();
+	}
+ 	lastShot = Time.time;
+ 	var bullet = Instantiate(Bullet, BarrelLocation.position, BarrelLocation.rotation);
+ 	//for added inaccuracy
+ 	if(Random.Range(0,Difficulty.missRate) == 0){
+ 		//miss
+ 		bullet.AddForce((missTarget.position - BarrelLocation.position) * 100);
+ 	} else {
+		bullet.AddForce((target.position - BarrelLocation.position) * 100);
+	}
+}
+
+function MoveTowardPlayer(){
+//	transform.position += transform.forward * moveSpeed * Time.deltaTime;
+	GetComponent.<Rigidbody>().AddForce(transform.forward * Difficulty.moveSpeed); //so speed could be calculated
+}
+
+function CheckDistance(){
+	var dist = Vector3.Distance(transform.position, target.position);
+	if (dist <= 150){
+		GetComponent.<Rigidbody>().velocity = Vector3.zero;
+		return true;
+		shotDelay = 5;
+	}
+	if (dist < 600 && dist > 150){
+		GetComponent.<Rigidbody>().velocity = Vector3.zero;
+		return true;
+	}
+	return false;
+}
+
+ function OnTriggerEnter(collision: Collider) {
+   
+      if (collision.gameObject.tag == "bullet"){
+           EnemyHealth -= 5;     
+           healthSlider.value = EnemyHealth;
+      }
+  }
+  
+=== FILE4: PlayerControl.js ===
+//CONTROLS THE PLAYER
+var forward: Vector3 = Vector3(0.5, 0.7, 0.8);
+var up: Vector3 = Vector3(0.0, 1.0, 0.0);
+var right = Vector3.Cross(forward.normalized, up.normalized);
+var left = -right;
+
+var moveSpeed = 1f;
+var torque: float;
+var eulerAngleVelocity : Vector3;
+var Health: float = 10;
+var deathSound: AudioSource;
+var cleanVisor: Animation;
+var healthSlider: Slider;
+var bulletArray : GameObject[]; 	//to hold bullets for destruction
+
+
+function Update(){
+	var speed:int = GetComponent.<Rigidbody>().velocity.magnitude * 3.6;
+	SpeedManager.speed = speed;
+	if (Health <= 0) {
+		deathSound = GetComponent.<AudioSource>();
+		if(AudioSet.soundOn){
+			deathSound.Play();
+		}
+		EndGameManager.gameEnded = true;
+ 		EndGameManager.gameSuccess = false;
+ 		DestroyAll();
+		Health = 0.00001; //used to stop audio glitching
+		//perhaps display an image and play an audio clip
+	}
+	if(Input.GetKey(KeyCode.X)){
+		GetComponent.<Rigidbody>().AddForce(transform.forward * 10f);
+	}
+	if(Input.GetKey(KeyCode.W)){
+//		GetComponent.<Rigidbody>().AddTorque(transform.forward * 10f);//face upward
+		GetComponent.<Rigidbody>().AddTorque( Vector3.Cross(transform.forward, transform.up) * 10f); 
+	}
+	if(Input.GetKey(KeyCode.S)){
+//		GetComponent.<Rigidbody>().AddTorque(transform.up);
+		GetComponent.<Rigidbody>().AddTorque( Vector3.Cross(transform.forward, transform.up) * -10f);
+//		GetComponent.<Rigidbody>().AddTorque(Vector3.right * -10f);//face downward
+	}
+	if(Input.GetKey(KeyCode.A)){
+//		GetComponent.<Rigidbody>().AddForce(Vector3.right * moveSpeed);
+		GetComponent.<Rigidbody>().AddTorque(Vector3.up * -10f);//rotate ledt
+	}
+	if(Input.GetKey(KeyCode.D)){
+//		GetComponent.<Rigidbody>().AddForce(Vector3.left * moveSpeed);
+		GetComponent.<Rigidbody>().AddTorque(Vector3.up * 10f);//rotate right
+	}
+	if(Input.GetKey(KeyCode.J)){
+//		GetComponent.<Rigidbody>().AddForce(Vector3.left * moveSpeed);
+		GetComponent.<Rigidbody>().AddTorque(Vector3.Cross(transform.right, transform.up) * 10f);//rotate right
+	}
+	if(Input.GetKey(KeyCode.K)){
+//		GetComponent.<Rigidbody>().AddForce(Vector3.left * moveSpeed);
+		GetComponent.<Rigidbody>().AddTorque(Vector3.Cross(transform.right, transform.up) * -10f);//rotate right
+	}
+	if(Input.GetKey(KeyCode.Return)){
+		GetComponent.<Rigidbody>().velocity = Vector3.zero;//stop speed
+		GetComponent.<Rigidbody>().angularVelocity = Vector3.zero;//stop rotation
+	}
+	if(Input.GetKey(KeyCode.Tab)){
+		cleanVisor.Play();
+		RemovePaint();
+	}
+	if(Input.GetKey(KeyCode.Q)){
+		EndGameManager.gameEnded = true;
+		EndGameManager.forceQuit = true;
+	}
+}
+
+function OnTriggerEnter(collision: Collider) {
+      if (collision.gameObject.tag == "enemybullet"){
+           Health -= 5;     
+           healthSlider.value = Health;
+           if (Health > 0) {Pain.isHurt = true;}
+//           var hitVisor = Math.floor(Math.random() * 3); //JS not UnityScript, causes error
+		   var hitVisor = Random.Range(0,2);
+           if(hitVisor == 0){
+           		PaintBallManager.hit = true;
+           }
+      } if (collision.gameObject.tag == "debris"){
+      	   Health -= 5;     
+           healthSlider.value = Health;
+           if (Health > 0) {Pain.isHurt = true;}
+      } if ( collision.gameObject.tag == "spaceship"){
+      		var speed = GetComponent.<Rigidbody>().velocity.magnitude;
+      		if(speed > 30){
+      			Health -= 20;     
+           		healthSlider.value = Health;
+           		if (Health > 0) {Pain.isHurt = true;}
+      		} else if(speed > 20 && speed < 30){
+      			Health -= 10;     
+           		healthSlider.value = Health;
+      		} else if(speed > 10 && speed < 20){
+      			Health -= 5;     
+           		healthSlider.value = Health;
+      		} else {
+      			//do nothing as too slow to hurt player
+      		}
+      }
+  }
+
+function DestroyAll(){
+ 	var enemy: GameObject = GameObject.FindWithTag("enemy");
+ 	var player: GameObject =  GetComponent.<GameObject>();
+ 	Destroy(enemy);
+ 	Destroy(player);
+    bulletArray =  GameObject.FindGameObjectsWithTag ("enemybullet");
+    for(var i = 0 ; i < bulletArray.length ; i ++) {
+        Destroy(bulletArray[i]);
+    }
+    bulletArray = GameObject.FindGameObjectsWithTag ("bullet");
+    for(i = 0 ; i < bulletArray.length ; i ++) {
+        Destroy(bulletArray[i]);
+    }
+}
+
+function RemovePaint(){
+	yield WaitForSeconds (2);
+	PaintBallManager.hit = false;
+}
+
+=== FILE5: GunShot.js ===
+//CONTROLS THE GUNSHOT SOUND ANIMATION AND BULLET CREATION
+var Bullet: Rigidbody;
+var BarrelLocation: Transform;
+var velocity: int = 100; //metric?
+
+function Update(){
+	if(Input.GetButtonDown("FirePaint")){
+//	var rb: Rigidbody = GameObject.FindWithTag("Player").GetComponent.<Rigidbody>();
+//	velocity = rb.velocity;
+		var gunsound: AudioSource = GetComponent.<AudioSource>();
+		GetComponent.<Animation>().Play("realGunShot");
+		if(AudioSet.soundOn){
+			gunsound.Play();
+		}
+		//fire dem bulletZ
+		var bullet = Instantiate(Bullet, BarrelLocation.position, BarrelLocation.rotation);
+		bullet.AddForce(transform.up * ((-velocity * 10) - (2 * SpeedManager.speed))); //speed is relative
+		//relative velocity
+		var sum: int = velocity + SpeedManager.speed;
+		print(SpeedManager.speed + "SPEED <- |()| -> VELOCITY" + velocity + " = TOTAL OF " + sum);
+	}
+
+}
+
+=== FILE6: PaintBallManager.js ===
+//CONTROLS THE DISPLAY WHEN THE PLAYER'S VISOR IS HIT BY A PAINTBALL
+static var hit:boolean = false;
+
+function Update(){
+	if(hit){
+		GetComponent.<CanvasRenderer>().SetAlpha(0.5f);
+	} else {
+		GetComponent.<CanvasRenderer>().SetAlpha(0f);
+	}
+}
+
+=== FILE7: Pain.js ===
+//CONTROLS THE HURT SOUND MADE BY THE PLAYER WHEN HIT BY A PAINTBALL
+import UnityEngine.UI;
+static var isHurt: boolean;
+function Update () {
+	 if(isHurt){
+	 	isHurt = !isHurt;
+	 	var wince = GetComponent.<AudioSource>();
+		wince.Play();
+	 }
+}
+
+
+=== FILE8: Difficulty.js ===
+//SETS THE DIFFICULTY FOR THE GAME. CONTROLS ENEMY HITRATE, ROTATION SPEED AND MOVEMENT SPEED
+var difficulty: int = 0; 			//0 easy
+static var missRate: int = 3;		//10 is default (easy)
+static var rotSpeed: int = 1;		//slow (easy)
+static var moveSpeed: int = 10;		//slow (easy)
+
+function Update(){
+	if (difficulty == 0){
+		missRate = 3;
+		rotSpeed = 1;
+		moveSpeed = 10;
+	} else {
+		missRate = 10;
+		rotSpeed = 5;
+		moveSpeed = 30;
+	}
+}
+
+function setDifficulty(x:int){
+	difficulty = x;
+}
+
+=== FILE9: AudioSet.js ===
+//CONTROLS WHETHER OR NOT SOUNDS ARE ALLOWED
+static var soundOn: boolean = true;
+
+function Update(){
+	if (soundOn){
+		return true;
+	}
+	return false;
+}
+
+function setSound(x:boolean){
+	soundOn = x;
+}
+
+=== FILE10: SpeedManager.js ===
+//CONTROLS THE PLAYER'S SPEEDOMETER
+static var speed : int; 
+private var text : Text;
+
+
+function Awake ()
+{
+    // Set up the reference.
+    text = GetComponent (Text);
+
+    // Reset the score.
+    speed = 0;
+    enemySpeed = 0;
+}
+
+
+function Update ()
+{
+    // Set the displayed text to be the word "Score" followed by the score value.
+    text.text = "SPEED: " + speed + " km/h";
+}
+
+=== FILE11: SpaceShip.js ===
+//CONTROLS THE COLLISIONS WITH THE SPACESHIPS (both the ship I made in blender and the imported blend)
+function Update(){
+	
+}
+
+function OnTriggerEnter(collision: Collider) {
+      if (collision.gameObject.tag == "enemybullet"){
+           //do nothing
+      } if (collision.gameObject.tag == "debris"){
+      	   //do nothing
+      } if ( collision.gameObject.tag == "bullet"){
+      		//end game
+      		EndGameManager.gameEnded = true;
+      		EndGameManager.forceQuit = true;
+      		DestroyAll();
+	  } if (collision.gameObject.tag=="Player"){
+	  		EndGameManager.gameEnded = true;
+      		EndGameManager.forceQuit = true;
+      		DestroyAll();
+	  }
+}
+
+function DestroyAll(){
+ 	var enemy: GameObject = GameObject.FindWithTag("enemy");
+ 	var player: GameObject =  GameObject.FindWithTag("Player").GetComponent.<GameObject>();
+ 	Destroy(enemy);
+ 	Destroy(player);
+    bulletArray =  GameObject.FindGameObjectsWithTag ("enemybullet");
+    for(var i = 0 ; i < bulletArray.length ; i ++) {
+        Destroy(bulletArray[i]);
+    }
+    bulletArray = GameObject.FindGameObjectsWithTag ("bullet");
+    for(i = 0 ; i < bulletArray.length ; i ++) {
+        Destroy(bulletArray[i]);
+    }
+}
+
+
+
+=== FILE12: QuitGame.cs ===
+//USED TO HANDLE QUIT FROM THE EXIT MENU AND WHEN Q IS PRESSED
+using UnityEngine;
+using System.Collections;
+
+public class QuitGame : MonoBehaviour {
+
+	public void Quit()
+	{
+		#if UNITY_EDITOR
+		UnityEditor.EditorApplication.isPlaying = false;
+		#else
+		Application.Quit ();
+		#endif
+	}
+
+}
+
+=== FILE13: LoadSceneOnView.cs ===
+//CHANGES THE SCENE FROM THE MAIN MENU TO LAUNCH THE GAME
+using UnityEngine;
+using System.Collections;
+using UnityEngine.SceneManagement;
+
+public class LoadSceneOnClick : MonoBehaviour {
+
+	public void LoadByIndex(int sceneIndex)
+	{
+		SceneManager.LoadScene (sceneIndex); //this is held in build settings
+	}
+}
+
+=== FILE14: EnemyManager.js ===
+//CONTROLS THE ENEMY SPEEDOMETER
+static var speed : int; 
+
+private var text : Text;
+
+
+function Awake ()
+{
+    // Set up the reference.
+    text = GetComponent (Text);
+
+    // Reset the score.
+    speed = 0;
+    enemySpeed = 0;
+}
+
+
+function Update ()
+{
+    // Set the displayed text to be the word "Score" followed by the score value.
+    text.text = "SPEED: " + speed + " km/h";
+}
